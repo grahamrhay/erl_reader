@@ -1,0 +1,12 @@
+{application, erl_reader,
+ [
+  {description, "Erlang/OTP powered feed aggregator"},
+  {vsn, "0.0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { erl_reader_app, []}},
+  {env, []}
+ ]}.
