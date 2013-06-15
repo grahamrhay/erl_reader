@@ -18,8 +18,15 @@ init([]) ->
     io:format("~p starting~n", [?MODULE]),
     {ok, #state{}}.
 
-handle_call({add, Uri}, _From, #state{feeds=F}) ->
-    {reply, ok, #state{feeds=[Uri|F]}};
+handle_call({add, Uri}, _From, State = #state{feeds=F}) ->
+    try atomizer:parse_url(Uri) of
+        unknown ->
+            {reply, bad_feed, State};
+        _Feed ->
+            {reply, ok, #state{feeds=[Uri|F]}}
+    catch
+        throw:Reason -> {reply, Reason, State}
+    end;
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
