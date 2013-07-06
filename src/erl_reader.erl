@@ -69,5 +69,6 @@ to_er_entry(FeedEntry) ->
     {
         title=FeedEntry#feedentry.title,
         date=FeedEntry#feedentry.date,
-        link=FeedEntry#feedentry.permalink
+        link=FeedEntry#feedentry.permalink,
+        content=FeedEntry#feedentry.content
     }.
