@@ -33,8 +33,7 @@ handle_call({add, Uri}, _From, State = #state{feeds=F}) ->
     end;
 
 handle_call(list, _From, State) ->
-    Reply = lists:map(fun(F) -> F#er_feed.uri end, State#state.feeds),
-    {reply, Reply, State};
+    {reply, State#state.feeds, State};
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
@@ -59,5 +58,14 @@ list_feeds() ->
     gen_server:call(?MODULE, list).
 
 create_feed(Feed) ->
-    #er_feed{uri=Feed#feed.url}.
+    #er_feed
+    {
+        uri=Feed#feed.url,
+        entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries)
+    }.
 
+to_er_entry(FeedEntry) ->
+    #er_entry
+    {
+        title=FeedEntry#feedentry.title
+    }.
