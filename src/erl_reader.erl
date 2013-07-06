@@ -62,8 +62,16 @@ create_feed(Feed) ->
     {
         uri=Feed#feed.url,
         lastUpdated=Feed#feed.updated,
+        nextCheck=time_for_next_check(Feed),
         entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries)
     }.
+
+time_for_next_check(_Feed) ->
+    %% TODO: check TTL, or freq of updates
+    Now = calendar:universal_time(),
+    NowInSeconds = calendar:datetime_to_gregorian_seconds(Now),
+    OneHourInSeconds = 3600,
+    calendar:gregorian_seconds_to_datetime(NowInSeconds + OneHourInSeconds).
 
 to_er_entry(FeedEntry) ->
     #er_entry
