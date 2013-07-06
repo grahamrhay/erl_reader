@@ -61,6 +61,7 @@ create_feed(Feed) ->
     #er_feed
     {
         uri=Feed#feed.url,
+        lastUpdated=Feed#feed.updated,
         entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries)
     }.
 
