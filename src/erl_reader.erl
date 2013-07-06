@@ -67,5 +67,6 @@ create_feed(Feed) ->
 to_er_entry(FeedEntry) ->
     #er_entry
     {
-        title=FeedEntry#feedentry.title
+        title=FeedEntry#feedentry.title,
+        date=FeedEntry#feedentry.date
     }.
