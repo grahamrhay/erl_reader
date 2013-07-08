@@ -12,6 +12,7 @@
 
 start() ->
     application:start(inets),
+    application:start(mnesia),
     application:start(?MODULE).
 
 start_link() ->
@@ -22,18 +23,19 @@ init([]) ->
     io:format("~p starting~n", [?MODULE]),
     {ok, #state{}}.
 
-handle_call({add, Uri}, _From, State = #state{feeds=F}) ->
+handle_call({add, Uri}, _From, State) ->
     try atomizer:parse_url(Uri) of
         unknown ->
             {reply, bad_feed, State};
         Feed ->
-            {reply, ok, #state{feeds=[create_feed(Feed)|F]}}
+            save_feed(create_feed(Feed)),
+            {reply, ok, State}
     catch
         throw:Reason -> {reply, Reason, State}
     end;
 
 handle_call(list, _From, State) ->
-    {reply, State#state.feeds, State};
+    {reply, get_all_feeds(), State};
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
@@ -81,3 +83,9 @@ to_er_entry(FeedEntry) ->
         link=FeedEntry#feedentry.permalink,
         content=FeedEntry#feedentry.content
     }.
+
+save_feed(Feed) ->
+    mnesia:activity(transaction, fun() -> mnesia:write(Feed) end).
+
+get_all_feeds() ->
+   mnesia:activity(transaction,fun() -> mnesia:select(er_feed,[{'_',[],['$_']}]) end). 
