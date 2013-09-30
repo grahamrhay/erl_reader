@@ -1,7 +1,7 @@
 -module(erl_reader).
 -behaviour(gen_server).
 
--export([start/0, start_link/0, add_feed/1, list_feeds/0]).
+-export([start/0, start_link/0, add_feed/2, list_feeds/0, create_db/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -23,15 +23,19 @@ init([]) ->
     io:format("~p starting~n", [?MODULE]),
     {ok, #state{}}.
 
-handle_call({add, Uri}, _From, State) ->
-    try atomizer:parse_url(Uri) of
-        unknown ->
-            {reply, bad_feed, State};
-        Feed ->
-            save_feed(create_feed(Feed)),
-            {reply, ok, State}
-    catch
-        throw:Reason -> {reply, Reason, State}
+handle_call({add, User, Uri}, _From, State) ->
+    case add_user_to_feed(User, Uri) of
+        ok -> {reply, ok, State};
+        no_match ->
+            try atomizer:parse_url(Uri) of % TODO: handle redirects
+                unknown ->
+                    {reply, bad_feed, State};
+                Feed ->
+                    save_feed(create_feed(Feed, User)),
+                    {reply, ok, State}
+            catch
+                throw:Reason -> {reply, Reason, State}
+            end
     end;
 
 handle_call(list, _From, State) ->
@@ -53,19 +57,21 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-add_feed(Uri) ->
-    gen_server:call(?MODULE, {add, Uri}).
+add_feed(User, Uri) ->
+    gen_server:call(?MODULE, {add, User, Uri}).
 
 list_feeds() ->
     gen_server:call(?MODULE, list).
 
-create_feed(Feed) ->
+create_feed(Feed, User) ->
     #er_feed
     {
+        id=uuid:get_v4(),
         uri=Feed#feed.url,
         lastUpdated=Feed#feed.updated,
         nextCheck=time_for_next_check(Feed),
-        entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries)
+        entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries),
+        users=[User]
     }.
 
 time_for_next_check(_Feed) ->
@@ -88,4 +94,37 @@ save_feed(Feed) ->
     mnesia:activity(transaction, fun() -> mnesia:write(Feed) end).
 
 get_all_feeds() ->
-   mnesia:activity(transaction,fun() -> mnesia:select(er_feed,[{'_',[],['$_']}]) end). 
+    mnesia:activity(transaction,fun() -> mnesia:select(er_feed, [{'_',[],['$_']}]) end). 
+
+add_user_to_feed(User, Uri) ->
+    io:format("Attempting to add user ~p to feed ~p~n", [User, Uri]),
+    mnesia:activity(transaction, fun() ->
+        case mnesia:index_read(er_feed, Uri, #er_feed.uri) of
+            [Feed] ->
+                io:format("Found feed"),
+                case lists:member(User, Feed#er_feed.users) of
+                    true ->
+                        io:format("Already subscribed"),
+                        ok;
+                    false ->
+                        io:format("Adding user"),
+                        UpdatedFeed = Feed#er_feed{users=[User|Feed#er_feed.users]},
+                        mnesia:write(UpdatedFeed),
+                        ok
+                end;
+            [] ->
+                io:format("No matching feed"),
+                no_match
+        end
+    end).
+
+create_db() ->
+    Nodes = [node()],
+    mnesia:create_schema(Nodes),
+    application:start(mnesia),
+    mnesia:create_table(er_feed, [
+        {attributes, record_info(fields, er_feed)},
+        {index, [#er_feed.uri]},
+        {disc_copies, Nodes}
+    ]),
+    application:stop(mnesia).
