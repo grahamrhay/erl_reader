@@ -25,13 +25,14 @@ init([]) ->
 
 handle_call({add, User, Uri}, _From, State) ->
     case add_user_to_feed(User, Uri) of
-        ok -> {reply, ok, State};
+        ok ->
+            {reply, ok, State};
         no_match ->
             try atomizer:parse_url(Uri) of % TODO: handle redirects
                 unknown ->
                     {reply, bad_feed, State};
                 Feed ->
-                    save_feed(create_feed(Feed, User)),
+                    save_feed(create_feed(Uri, Feed, User)),
                     {reply, ok, State}
             catch
                 throw:Reason -> {reply, Reason, State}
@@ -63,10 +64,11 @@ add_feed(User, Uri) ->
 list_feeds() ->
     gen_server:call(?MODULE, list).
 
-create_feed(Feed, User) ->
+create_feed(FeedUri, Feed, User) ->
     #er_feed
     {
         id=uuid:get_v4(),
+        feed=FeedUri,
         uri=Feed#feed.url,
         lastUpdated=Feed#feed.updated,
         nextCheck=time_for_next_check(Feed),
@@ -99,21 +101,21 @@ get_all_feeds() ->
 add_user_to_feed(User, Uri) ->
     io:format("Attempting to add user ~p to feed ~p~n", [User, Uri]),
     mnesia:activity(transaction, fun() ->
-        case mnesia:index_read(er_feed, Uri, #er_feed.uri) of
+        case mnesia:index_read(er_feed, Uri, #er_feed.feed) of
             [Feed] ->
-                io:format("Found feed"),
+                io:format("Found feed~n", []),
                 case lists:member(User, Feed#er_feed.users) of
                     true ->
-                        io:format("Already subscribed"),
+                        io:format("Already subscribed~n", []),
                         ok;
                     false ->
-                        io:format("Adding user"),
+                        io:format("Adding user~n", []),
                         UpdatedFeed = Feed#er_feed{users=[User|Feed#er_feed.users]},
                         mnesia:write(UpdatedFeed),
                         ok
                 end;
             [] ->
-                io:format("No matching feed"),
+                io:format("No matching feed~n", []),
                 no_match
         end
     end).
@@ -124,7 +126,7 @@ create_db() ->
     application:start(mnesia),
     mnesia:create_table(er_feed, [
         {attributes, record_info(fields, er_feed)},
-        {index, [#er_feed.uri]},
+        {index, [#er_feed.feed]},
         {disc_copies, Nodes}
     ]),
     application:stop(mnesia).
