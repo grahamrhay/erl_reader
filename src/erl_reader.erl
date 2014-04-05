@@ -1,17 +1,19 @@
 -module(erl_reader).
 -behaviour(gen_server).
 
--export([start/0, start_link/0, add_feed/2, list_feeds/0, create_db/0]).
+-export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0, create_db/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -include("erl_reader.hrl").
 -include("deps/atomizer/src/atomizer.hrl").
+-include("deps/seymour/src/seymour.hrl").
 
 -record(state, {feeds=[]}).
 
 start() ->
     application:start(inets),
+    application:start(ssl),
     application:start(mnesia),
     application:start(?MODULE).
 
@@ -24,19 +26,16 @@ init([]) ->
     {ok, #state{}}.
 
 handle_call({add, User, Uri}, _From, State) ->
-    case add_user_to_feed(User, Uri) of
-        ok ->
-            {reply, ok, State};
-        no_match ->
-            try atomizer:parse_url(Uri) of % TODO: handle redirects
-                unknown ->
-                    {reply, bad_feed, State};
-                Feed ->
-                    save_feed(create_feed(Uri, Feed, User)),
-                    {reply, ok, State}
-            catch
-                throw:Reason -> {reply, Reason, State}
-            end
+    Result = add_new_feed_for_user(User, Uri),
+    {reply, Result, State};
+
+handle_call({import, User, File}, _From, State) ->
+    try seymour:parse_file(File) of
+        FeedList ->
+            add_user_to_multiple_feeds(User, FeedList),
+            {reply, ok, State}
+    catch
+        throw:Reason -> {reply, Reason, State}
     end;
 
 handle_call(list, _From, State) ->
@@ -44,6 +43,10 @@ handle_call(list, _From, State) ->
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
+
+handle_cast({add, User, Uri}, State) ->
+    add_new_feed_for_user(User, Uri),
+    {noreply, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -60,6 +63,9 @@ code_change(_OldVsn, State, _Extra) ->
 
 add_feed(User, Uri) ->
     gen_server:call(?MODULE, {add, User, Uri}).
+
+import_feed_list(User, File) ->
+    gen_server:call(?MODULE, {import, User, File}).
 
 list_feeds() ->
     gen_server:call(?MODULE, list).
@@ -120,6 +126,9 @@ add_user_to_feed(User, Uri) ->
         end
     end).
 
+add_user_to_multiple_feeds(User, FeedList) ->
+    lists:foreach(fun(Feed) -> gen_server:cast(?MODULE, {add, User, Feed#seymour_feed.xmlUrl}) end, FeedList).
+
 create_db() ->
     Nodes = [node()],
     mnesia:create_schema(Nodes),
@@ -130,3 +139,22 @@ create_db() ->
         {disc_copies, Nodes}
     ]),
     application:stop(mnesia).
+
+add_new_feed_for_user(User, Uri) ->
+    case add_user_to_feed(User, Uri) of
+        ok ->
+            ok;
+        no_match ->
+            try atomizer:parse_url(Uri) of % TODO: handle redirects
+                unknown ->
+                    bad_feed;
+                Feed ->
+                    save_feed(create_feed(Uri, Feed, User)),
+                    io:format("Creating new feed entry for ~p~n", [Uri]),
+                    ok
+            catch
+                _:Reason ->
+                    io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
+                    Reason
+            end
+    end.
