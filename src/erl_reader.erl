@@ -1,7 +1,7 @@
 -module(erl_reader).
 -behaviour(gen_server).
 
--export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0, create_db/0]).
+-export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -17,7 +17,6 @@ start() ->
     application:start(asn1),
     application:start(public_key),
     application:start(ssl),
-    application:start(mnesia),
     application:start(?MODULE).
 
 start_link() ->
@@ -28,9 +27,9 @@ init([]) ->
     io:format("~p starting~n", [?MODULE]),
     {ok, #state{}}.
 
-handle_call({add, User, Uri}, _From, State) ->
-    Result = add_new_feed_for_user(User, Uri),
-    {reply, Result, State};
+handle_call({add, User, Uri}, _From, #state{feeds=Feeds}=State) ->
+    {Result, UpdatedFeeds} = add_new_feed_for_user(User, Uri, Feeds),
+    {reply, Result, State#state{feeds=UpdatedFeeds}};
 
 handle_call({import, User, File}, _From, State) ->
     try seymour:parse_file(File) of
@@ -41,15 +40,15 @@ handle_call({import, User, File}, _From, State) ->
         throw:Reason -> {reply, Reason, State}
     end;
 
-handle_call(list, _From, State) ->
-    {reply, get_all_feeds(), State};
+handle_call(list, _From, #state{feeds=Feeds}=State) ->
+    {reply, get_all_feeds(Feeds), State};
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({add, User, Uri}, State) ->
-    add_new_feed_for_user(User, Uri),
-    {noreply, State};
+handle_cast({add, User, Uri}, #state{feeds=Feeds}=State) ->
+    {_, UpdatedFeeds} = add_new_feed_for_user(User, Uri, Feeds),
+    {noreply, State#state{feeds=UpdatedFeeds}};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
@@ -101,63 +100,53 @@ to_er_entry(FeedEntry) ->
         content=FeedEntry#feedentry.content
     }.
 
-save_feed(Feed) ->
-    mnesia:activity(transaction, fun() -> mnesia:write(Feed) end).
+save_feed(Feed, Feeds) ->
+    Uri = Feed#er_feed.feed,
+    lists:keystore(Uri, 1, Feeds, {Uri, Feed}).
 
-get_all_feeds() ->
-    mnesia:activity(transaction,fun() -> mnesia:select(er_feed, [{'_',[],['$_']}]) end). 
+get_all_feeds(Feeds) ->
+    lists:map(fun({_,Feed}) -> Feed end, Feeds).
 
-add_user_to_feed(User, Uri) ->
+add_user_to_feed(User, Uri, Feeds) ->
     io:format("Attempting to add user ~p to feed ~p~n", [User, Uri]),
-    mnesia:activity(transaction, fun() ->
-        case mnesia:index_read(er_feed, Uri, #er_feed.feed) of
-            [Feed] ->
-                io:format("Found feed~n", []),
-                case lists:member(User, Feed#er_feed.users) of
-                    true ->
-                        io:format("Already subscribed~n", []),
-                        ok;
-                    false ->
-                        io:format("Adding user~n", []),
-                        UpdatedFeed = Feed#er_feed{users=[User|Feed#er_feed.users]},
-                        mnesia:write(UpdatedFeed),
-                        ok
-                end;
-            [] ->
-                io:format("No matching feed~n", []),
-                no_match
-        end
-    end).
+    case lists:keyfind(Uri, 1, Feeds) of
+        {Uri, Feed} ->
+            io:format("Found feed~n", []),
+            case lists:member(User, Feed#er_feed.users) of
+                true ->
+                    io:format("Already subscribed~n", []),
+                    {ok, Feeds};
+                false ->
+                    io:format("Adding user~n", []),
+                    UpdatedFeed = Feed#er_feed{users=[User|Feed#er_feed.users]},
+                    UpdatedFeeds = save_feed(UpdatedFeed, Feeds),
+                    {ok, UpdatedFeeds}
+            end;
+        false ->
+            io:format("No matching feed~n", []),
+            no_match
+    end.
 
 add_user_to_multiple_feeds(User, FeedList) ->
     lists:foreach(fun(Feed) -> gen_server:cast(?MODULE, {add, User, Feed#seymour_feed.xmlUrl}) end, FeedList).
 
-create_db() ->
-    Nodes = [node()],
-    mnesia:create_schema(Nodes),
-    application:start(mnesia),
-    mnesia:create_table(er_feed, [
-        {attributes, record_info(fields, er_feed)},
-        {index, [#er_feed.feed]},
-        {disc_copies, Nodes}
-    ]),
-    application:stop(mnesia).
-
-add_new_feed_for_user(User, Uri) ->
-    case add_user_to_feed(User, Uri) of
-        ok ->
-            ok;
+add_new_feed_for_user(User, Uri, Feeds) ->
+    case add_user_to_feed(User, Uri, Feeds) of
+        {ok, UpdatedFeeds} ->
+            {ok, UpdatedFeeds};
         no_match ->
             try atomizer:parse_url(Uri) of % TODO: handle redirects
                 unknown ->
-                    bad_feed;
+                    io:format("Unable to parse feed: ~p~n", [Uri]),
+                    {bad_feed, Feeds};
                 Feed ->
-                    save_feed(create_feed(Uri, Feed, User)),
                     io:format("Creating new feed entry for ~p~n", [Uri]),
-                    ok
+                    FeedRecord = create_feed(Uri, Feed, User),
+                    UpdatedFeeds = save_feed(FeedRecord, Feeds),
+                    {ok, UpdatedFeeds}
             catch
                 _:Reason ->
                     io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
-                    Reason
+                    {Reason, Feeds}
             end
     end.
