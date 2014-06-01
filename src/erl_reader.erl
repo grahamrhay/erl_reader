@@ -1,7 +1,7 @@
 -module(erl_reader).
 -behaviour(gen_server).
 
--export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0]).
+-export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0, update/0]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -10,6 +10,8 @@
 -include("deps/seymour/src/seymour.hrl").
 
 -record(state, {feeds=[]}).
+
+-define(INTERVAL, 5000).
 
 start() ->
     application:start(inets),
@@ -24,6 +26,7 @@ start_link() ->
 
 init([]) ->
     io:format("~p starting~n", [?MODULE]),
+    %erlang:send_after(?INTERVAL, self(), check_for_updates),
     {ok, #state{}}.
 
 handle_call({add, User, Uri}, _From, #state{feeds=Feeds}=State) ->
@@ -42,6 +45,10 @@ handle_call({import, User, File}, _From, State) ->
 handle_call(list, _From, #state{feeds=Feeds}=State) ->
     {reply, get_all_feeds(Feeds), State};
 
+handle_call(update, _From, #state{feeds=Feeds}=State) ->
+    check_for_updates(Feeds),
+    {reply, ok, State};
+
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
@@ -51,6 +58,12 @@ handle_cast({add, User, Uri}, #state{feeds=Feeds}=State) ->
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
+
+handle_info(check_for_updates, #state{feeds=Feeds}=State) ->
+    io:format("Checking for updates~n"),
+    check_for_updates(Feeds),
+    erlang:send_after(?INTERVAL, self(), check_for_updates),
+    {noreply, State};
 
 handle_info(_Msg, State) ->
     {noreply, State}.
@@ -71,6 +84,9 @@ import_feed_list(User, File) ->
 list_feeds() ->
     gen_server:call(?MODULE, list).
 
+update() ->
+    gen_server:call(?MODULE, update).
+
 create_feed(FeedUri, Feed, User) ->
     #er_feed
     {
@@ -87,8 +103,9 @@ time_for_next_check(_Feed) ->
     %% TODO: check TTL, or freq of updates
     Now = calendar:universal_time(),
     NowInSeconds = calendar:datetime_to_gregorian_seconds(Now),
-    OneHourInSeconds = 3600,
-    calendar:gregorian_seconds_to_datetime(NowInSeconds + OneHourInSeconds).
+    %OneHourInSeconds = 3600,
+    %calendar:gregorian_seconds_to_datetime(NowInSeconds + OneHourInSeconds).
+    calendar:gregorian_seconds_to_datetime(NowInSeconds).
 
 to_er_entry(FeedEntry) ->
     #er_entry
@@ -149,3 +166,8 @@ add_new_feed_for_user(User, Uri, Feeds) ->
                     {Reason, Feeds}
             end
     end.
+
+check_for_updates(Feeds) ->
+    NeedingUpdate = lists:filter(fun(Feed) -> Feed#er_feed.nextCheck < calendar:universal_time() end, get_all_feeds(Feeds)),
+    io:format("Feeds needing update: ~p~n", [length(NeedingUpdate)]),
+    lists:foreach(fun(Feed) -> supervisor:start_child(er_crawler_sup, [Feed]) end, NeedingUpdate).
