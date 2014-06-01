@@ -23,7 +23,6 @@ start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 init([]) ->
-    process_flag(trap_exit, true),
     io:format("~p starting~n", [?MODULE]),
     {ok, #state{}}.
 
