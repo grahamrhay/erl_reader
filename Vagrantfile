@@ -10,4 +10,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       v.memory = 1024
       v.cpus = 2
   end
+
+  config.vm.provision "shell", path: "provision.sh"
 end
