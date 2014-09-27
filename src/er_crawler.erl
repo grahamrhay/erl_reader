@@ -5,6 +5,8 @@
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 
+-include("erl_reader.hrl").
+
 -record(state, {feed}).
 
 start_link(Feed) ->
@@ -12,17 +14,18 @@ start_link(Feed) ->
 
 init([Feed]) ->
     io:format("~p starting~n", [?MODULE]),
-    {ok, #state{feed=Feed}, 0}.
+    gen_server:cast(self(), check_for_updates),
+    {ok, #state{feed=Feed}}.
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
+handle_cast(check_for_updates, State = #state{feed=Feed}) ->
+    io:format("Checking for updates: ~p~n", [Feed#er_feed.feed]),
+    {stop, normal, State};
+
 handle_cast(_Msg, State) ->
     {noreply, State}.
-
-handle_info(timeout, State) ->
-    io:format("timeout~n"),
-    {stop, normal, State};
 
 handle_info(_Msg, State) ->
     {noreply, State}.
