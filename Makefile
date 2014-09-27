@@ -1,16 +1,8 @@
-.PHONY: deps
+PROJECT = erl_reader
 
-all: deps
-	@./rebar compile
+DEPS = atomizer seymour uuid
+dep_atomizer = git https://github.com/grahamrhay/atomizer master
+dep_seymour = git https://github.com/grahamrhay/seymour master
+dep_uuid = git https://github.com/okeuday/uuid v1.3.1
 
-compile:
-	@./rebar compile skip_deps=true
-
-deps:
-	@./rebar get-deps
-
-clean:
-	@./rebar clean
-
-distclean: clean
-	@./rebar delete-deps
+include erlang.mk

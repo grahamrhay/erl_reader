@@ -2,6 +2,7 @@
  [
   {description, "Erlang/OTP powered feed aggregator"},
   {vsn, "0.0.1"},
+  {modules, []},
   {registered, []},
   {applications, [
                   kernel,

@@ -3,3 +3,5 @@ ebin
 *.swp
 Mnesia.nonode@nohost
 .vagrant
+.erlang.mk.packages.v2
+*.opml
