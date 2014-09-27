@@ -21,8 +21,16 @@ handle_call(_, _From, State) ->
     {reply, ok, State}.
 
 handle_cast(check_for_updates, State = #state{feed=Feed}) ->
-    io:format("Checking for updates: ~p~n", [Feed#er_feed.feed]),
-    {stop, normal, State};
+    Uri = Feed#er_feed.feed,
+    io:format("Checking for updates: ~p~n", [Uri]),
+    try atomizer:parse_url(Uri) of
+        _Feed ->
+            {stop, normal, State}
+    catch
+        _:Reason ->
+            io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
+            {stop, feed_error, State}
+    end;
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
