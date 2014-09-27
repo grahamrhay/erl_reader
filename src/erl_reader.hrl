@@ -1,15 +1,15 @@
 -record(er_feed,
-		{id,
+        {id,
          feed,
-         uri,		
+         uri,
          lastUpdated,
          nextCheck,
-		 entries=gb_sets:new(),
+         entries=gb_sets:new(),
          users=[]}).
 
 -record(er_entry,
-		{title,
-		 date,
-		 link,
-		 content
-		 }).
+        {title,
+         date,
+         link,
+         content
+        }).
