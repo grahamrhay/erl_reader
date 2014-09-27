@@ -4,7 +4,7 @@
          uri,
          lastUpdated,
          nextCheck,
-         entries=gb_sets:new(),
+         entries=[],
          users=[]}).
 
 -record(er_entry,
