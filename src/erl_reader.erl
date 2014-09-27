@@ -100,11 +100,17 @@ create_feed(FeedUri, Feed, User) ->
         id=uuid:get_v4(),
         feed=FeedUri,
         uri=Feed#feed.url,
-        lastUpdated=Feed#feed.updated,
+        lastUpdated=get_last_updated(Feed#feed.updated),
         nextCheck=time_for_next_check(Feed),
         entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries),
         users=[User]
     }.
+
+get_last_updated(undefined) ->
+    calendar:universal_time();
+
+get_last_updated(LastUpdated) ->
+    LastUpdated.
 
 time_for_next_check(_Feed) ->
     %% TODO: check TTL, or freq of updates
