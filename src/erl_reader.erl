@@ -1,7 +1,7 @@
 -module(erl_reader).
 -behaviour(gen_server).
 
--export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0, update/0]).
+-export([start/0, start_link/0, add_feed/2, import_feed_list/2, list_feeds/0, update/0, update_feed/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
@@ -49,6 +49,10 @@ handle_call(update, _From, #state{feeds=Feeds}=State) ->
     check_for_updates(Feeds),
     {reply, ok, State};
 
+handle_call({update_feed, Uri}, _From, #state{feeds=Feeds}=State) ->
+    update_feed(Uri, Feeds),
+    {reply, ok, State};
+
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
@@ -86,6 +90,9 @@ list_feeds() ->
 
 update() ->
     gen_server:call(?MODULE, update).
+
+update_feed(Uri) ->
+    gen_server:call(?MODULE, {update_feed, Uri}).
 
 create_feed(FeedUri, Feed, User) ->
     #er_feed
@@ -171,3 +178,8 @@ check_for_updates(Feeds) ->
     NeedingUpdate = lists:filter(fun(Feed) -> Feed#er_feed.nextCheck < calendar:universal_time() end, get_all_feeds(Feeds)),
     io:format("Feeds needing update: ~p~n", [length(NeedingUpdate)]),
     lists:foreach(fun(Feed) -> supervisor:start_child(er_crawler_sup, [Feed]) end, NeedingUpdate).
+
+update_feed(Uri, Feeds) ->
+    [Feed] = lists:filter(fun(Feed) -> Feed#er_feed.feed =:= Uri end, get_all_feeds(Feeds)),
+    io:format("Updating feed: ~p~n", [Uri]),
+    supervisor:start_child(er_crawler_sup, [Feed]).
