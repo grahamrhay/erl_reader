@@ -12,6 +12,7 @@ start_link() ->
 
 init([]) ->
     io:format("~p starting~n", [?MODULE]),
+    register(?MODULE, self()),
     {ok, #state{}}.
 
 handle_call(_, _From, State) ->
