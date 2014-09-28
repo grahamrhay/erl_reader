@@ -94,41 +94,6 @@ update() ->
 update_feed(Uri) ->
     gen_server:call(?MODULE, {update_feed, Uri}).
 
-create_feed(FeedUri, Feed, User) ->
-    #er_feed
-    {
-        id=uuid:get_v4(),
-        feed=FeedUri,
-        uri=Feed#feed.url,
-        lastUpdated=get_last_updated(Feed#feed.updated),
-        nextCheck=time_for_next_check(Feed),
-        entries=lists:map(fun(FE) -> to_er_entry(FE) end, Feed#feed.entries),
-        users=[User]
-    }.
-
-get_last_updated(undefined) ->
-    calendar:universal_time();
-
-get_last_updated(LastUpdated) ->
-    LastUpdated.
-
-time_for_next_check(_Feed) ->
-    %% TODO: check TTL, or freq of updates
-    Now = calendar:universal_time(),
-    NowInSeconds = calendar:datetime_to_gregorian_seconds(Now),
-    %OneHourInSeconds = 3600,
-    %calendar:gregorian_seconds_to_datetime(NowInSeconds + OneHourInSeconds).
-    calendar:gregorian_seconds_to_datetime(NowInSeconds).
-
-to_er_entry(FeedEntry) ->
-    #er_entry
-    {
-        title=FeedEntry#feedentry.title,
-        date=FeedEntry#feedentry.date,
-        link=FeedEntry#feedentry.permalink,
-        content=FeedEntry#feedentry.content
-    }.
-
 save_feed(Feed, Feeds) ->
     Uri = Feed#er_feed.feed,
     lists:keystore(Uri, 1, Feeds, {Uri, Feed}).
@@ -164,20 +129,9 @@ add_new_feed_for_user(User, Uri, Feeds) ->
         {ok, UpdatedFeeds} ->
             {ok, UpdatedFeeds};
         no_match ->
-            supervisor:start_child(er_feed_sup, [Uri]),
-            try atomizer:parse_url(Uri) of % TODO: handle redirects
-                unknown ->
-                    io:format("Unable to parse feed: ~p~n", [Uri]),
-                    {bad_feed, Feeds};
-                Feed ->
-                    io:format("Creating new feed entry for ~p~n", [Uri]),
-                    FeedRecord = create_feed(Uri, Feed, User),
-                    UpdatedFeeds = save_feed(FeedRecord, Feeds),
-                    {ok, UpdatedFeeds}
-            catch
-                _:Reason ->
-                    io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
-                    {Reason, Feeds}
+            case supervisor:start_child(er_feed_sup, [Uri]) of
+                {ok, _ChildPid} -> {ok, Feeds};
+                {error, Error} -> {Error, Feeds}
             end
     end.
 

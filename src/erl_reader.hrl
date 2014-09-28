@@ -1,6 +1,5 @@
 -record(er_feed,
-        {id,
-         feed,
+        {feed,
          uri,
          lastUpdated,
          nextCheck,
