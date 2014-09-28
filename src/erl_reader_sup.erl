@@ -31,7 +31,6 @@ init([]) ->
             [
                 ?CHILD(erl_reader, worker),
                 ?CHILD(er_user_feeds, worker),
-                ?CHILD(er_crawler_sup, supervisor),
                 ?CHILD(er_feed_sup, supervisor)
             ]
         }
