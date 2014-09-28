@@ -164,6 +164,7 @@ add_new_feed_for_user(User, Uri, Feeds) ->
         {ok, UpdatedFeeds} ->
             {ok, UpdatedFeeds};
         no_match ->
+            supervisor:start_child(er_feed_sup, [Uri]),
             try atomizer:parse_url(Uri) of % TODO: handle redirects
                 unknown ->
                     io:format("Unable to parse feed: ~p~n", [Uri]),

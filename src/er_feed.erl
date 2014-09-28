@@ -2,16 +2,16 @@
 
 -behaviour(gen_server).
 
--export([start_link/0]).
+-export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, code_change/3, terminate/2]).
 
 -record(state, {}).
 
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+start_link(Uri) ->
+    gen_server:start_link(?MODULE, [Uri], []).
 
-init([]) ->
-    io:format("~p starting~n", [?MODULE]),
+init([Uri]) ->
+    io:format("~p starting. Uri: ~p~n", [?MODULE, Uri]),
     {ok, #state{}}.
 
 handle_call(_, _From, State) ->
