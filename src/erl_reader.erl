@@ -9,7 +9,7 @@
 -include("deps/atomizer/src/atomizer.hrl").
 -include("deps/seymour/src/seymour.hrl").
 
--record(state, {feeds=[]}).
+-record(state, {feeds=#{}}).
 
 -define(INTERVAL, 5000).
 
@@ -103,9 +103,10 @@ get_all_feeds(Feeds) ->
 
 add_user_to_feed(User, Uri, Feeds) ->
     io:format("Attempting to add user ~p to feed ~p~n", [User, Uri]),
-    case lists:keyfind(Uri, 1, Feeds) of
-        {Uri, Feed} ->
+    case maps:is_key(Uri, Feeds) of
+        true ->
             io:format("Found feed~n", []),
+            Feed = maps:get(Uri, Feeds),
             case lists:member(User, Feed#er_feed.users) of
                 true ->
                     io:format("Already subscribed~n", []),
@@ -130,7 +131,9 @@ add_new_feed_for_user(User, Uri, Feeds) ->
             {ok, UpdatedFeeds};
         no_match ->
             case supervisor:start_child(er_feed_sup, [Uri]) of
-                {ok, _ChildPid} -> {ok, Feeds};
+                {ok, Pid} ->
+                    UpdatedFeeds = maps:put(Uri, Pid, Feeds),
+                    {ok, UpdatedFeeds};
                 {error, Error} -> {Error, Feeds}
             end
     end.
