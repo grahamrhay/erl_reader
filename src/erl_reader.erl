@@ -94,42 +94,27 @@ update() ->
 update_feed(Uri) ->
     gen_server:call(?MODULE, {update_feed, Uri}).
 
-save_feed(Feed, Feeds) ->
-    Uri = Feed#er_feed.feed,
-    lists:keystore(Uri, 1, Feeds, {Uri, Feed}).
-
 get_all_feeds(Feeds) ->
     lists:map(fun({_,Feed}) -> Feed end, Feeds).
 
-add_user_to_feed(User, Uri, Feeds) ->
-    io:format("Attempting to add user ~p to feed ~p~n", [User, Uri]),
-    case maps:is_key(Uri, Feeds) of
-        true ->
-            io:format("Found feed~n", []),
-            Feed = maps:get(Uri, Feeds),
-            case lists:member(User, Feed#er_feed.users) of
-                true ->
-                    io:format("Already subscribed~n", []),
-                    {ok, Feeds};
-                false ->
-                    io:format("Adding user~n", []),
-                    UpdatedFeed = Feed#er_feed{users=[User|Feed#er_feed.users]},
-                    UpdatedFeeds = save_feed(UpdatedFeed, Feeds),
-                    {ok, UpdatedFeeds}
-            end;
-        false ->
-            io:format("No matching feed~n", []),
-            no_match
-    end.
+add_user_to_feed(User, Uri) ->
+    gen_server:call(er_user_feeds, {add, User, Uri}).
 
 add_user_to_multiple_feeds(User, FeedList) ->
     lists:foreach(fun(Feed) -> gen_server:cast(?MODULE, {add, User, Feed#seymour_feed.xmlUrl}) end, FeedList).
 
 add_new_feed_for_user(User, Uri, Feeds) ->
-    case add_user_to_feed(User, Uri, Feeds) of
+    case create_feed(Uri, Feeds) of
         {ok, UpdatedFeeds} ->
+            add_user_to_feed(User, Uri),
             {ok, UpdatedFeeds};
-        no_match ->
+        {error, Error} -> {error, Error}
+    end.
+
+create_feed(Uri, Feeds) ->
+    case maps:is_key(Uri, Feeds) of
+        true -> {ok, Feeds};
+        false ->
             case supervisor:start_child(er_feed_sup, [Uri]) of
                 {ok, Pid} ->
                     UpdatedFeeds = maps:put(Uri, Pid, Feeds),
