@@ -15,24 +15,24 @@ start_link(Uri) ->
 
 init([Uri]) ->
     io:format("~p starting. Uri: ~p~n", [?MODULE, Uri]),
-    try atomizer:parse_url(Uri) of % TODO: handle redirects
-        unknown ->
-            io:format("Unable to parse feed: ~p~n", [Uri]),
-            {stop, bad_feed};
-        Feed ->
+    case get_feed(Uri) of
+        {ok, Feed} ->
             io:format("Creating new feed entry for ~p~n", [Uri]),
+            io:format("Pid~p~n", [self()]),
             FeedRecord = create_feed(Uri, Feed),
-            {ok, #state{feed=FeedRecord}}
-    catch
-        _:Reason ->
-            io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
-            {stop, Reason}
+            {ok, #state{feed=FeedRecord}};
+        {error, Error} ->
+            {stop, Error}
     end.
 
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(update, State = #state{feed=Feed}) ->
+    Uri = Feed#er_feed.feed,
+    io:format("Checking for updates to ~p~n", [Uri]),
+    {ok, LatestFeed} = get_feed(Uri),
+    check_for_updates(Feed, LatestFeed),
     {noreply, State}.
 
 handle_info(_Msg, State) ->
@@ -44,6 +44,19 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+get_feed(Uri) ->
+    try atomizer:parse_url(Uri) of % TODO: handle redirects
+        unknown ->
+            io:format("Unable to parse feed: ~p~n", [Uri]),
+            {error, bad_feed};
+        Feed ->
+            {ok, Feed}
+    catch
+        _:Reason ->
+            io:format("Error parsing feed: ~p~p~n", [Reason, erlang:get_stacktrace()]),
+            {error, Reason}
+    end.
 
 create_feed(FeedUri, Feed) ->
     #er_feed
@@ -76,3 +89,15 @@ to_er_entry(FeedEntry) ->
         link=FeedEntry#feedentry.permalink,
         content=FeedEntry#feedentry.content
     }.
+
+check_for_updates(Feed, UpdatedFeed) when UpdatedFeed#feed.updated =/= undefined, Feed#er_feed.lastUpdated >= UpdatedFeed#feed.updated ->
+    % no-op if last update for feed is as old or older than the version we have already
+    ok;
+
+check_for_updates(Feed, UpdatedFeed) ->
+    NewEntries = lists:filter(fun(Entry) ->
+                                  MatchingEntries = lists:filter(fun(E) -> E#er_entry.link =:= Entry#feedentry.permalink end, Feed#er_feed.entries),
+                                  length(MatchingEntries) =:= 0
+                              end, UpdatedFeed#feed.entries),
+    io:format("New entries: ~p~n", [NewEntries]),
+    ok.
