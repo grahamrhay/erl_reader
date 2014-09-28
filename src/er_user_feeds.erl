@@ -20,6 +20,11 @@ handle_call({add, User, Uri}, _From, State = #state{user_feeds = UserFeeds}) ->
     {ok, UpdatedUserFeeds} = add_user_to_feed(User, Uri, UserFeeds),
     {reply, ok, State#state{user_feeds = UpdatedUserFeeds}};
 
+handle_call({get_feeds, User}, _From, State = #state{user_feeds = UserFeeds}) ->
+    io:format("Getting feeds for user ~p~n", [User]),
+    Result = get_feeds_for_user(User, UserFeeds),
+    {reply, Result, State};
+
 handle_call(_, _From, State) ->
     {reply, ok, State}.
 
@@ -46,3 +51,13 @@ add_user_to_feed(User, Uri, UserFeeds) ->
             maps:put(User, [Uri], UserFeeds)
     end,
     {ok, UpdatedUserFeeds}.
+
+get_feeds_for_user(User, UserFeeds) ->
+    case maps:is_key(User, UserFeeds) of
+        true ->
+            Feeds = maps:get(User, UserFeeds),
+            {ok, Feeds};
+        false ->
+            {error, bad_user}
+    end.
+
